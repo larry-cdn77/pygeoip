@@ -202,7 +202,11 @@ class GeoIP(object):
             offset = 0
             seek_depth = 127 if len(str(ipnum)) > 10 else 31
 
+            # iterate address bits in reverse
             for depth in range(seek_depth, -1, -1):
+
+                # read a 6-byte record stored in the record portion of the file
+                # byte position is 6*offset
                 if self._flags & const.MEMORY_CACHE:
                     startIndex = 2 * self._recordLength * offset
                     endIndex = startIndex + (2 * self._recordLength)
@@ -220,11 +224,15 @@ class GeoIP(object):
                 if PY3 and type(buf) is bytes:
                     buf = buf.decode(ENCODING)
 
+                # extract two 3-byte little-endian values, left and right pointers
                 x = [0, 0]
                 for i in range(2):
                     for j in range(self._recordLength):
                         byte = buf[self._recordLength * i + j]
                         x[i] += ord(byte) << (j * 8)
+
+                # take left or right depending on address bit
+                # stop once we arrive into the data portion of the file
                 if ipnum & (1 << depth):
                     if x[1] >= self._databaseSegments:
                         self._netmask = seek_depth - depth + 1
@@ -247,10 +255,15 @@ class GeoIP(object):
 
         :arg ipnum: Result of ip2long conversion
         """
+        # pointer to leaf node (seek_org) is of the form N+d
+        # where N is record count and d is data segment byte offset
+        # data segments begin at byte position 3*N
         seek_org = self._seek_country(ipnum)
         if seek_org == self._databaseSegments:
             return None
 
+        # data segment's byte position is 6*N+d
+        # since we have N+d in seek_org we add 6*N-N to it
         read_length = (2 * self._recordLength - 1) * self._databaseSegments
         try:
             self._lock.acquire()
